@@ -1,0 +1,6 @@
+{
+  "video_port": 9999,
+  "web_port": 5001,
+  "dos_threshold_mbps": 8,
+  "block_timeout": 30
+}

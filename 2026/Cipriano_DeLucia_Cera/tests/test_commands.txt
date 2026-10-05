@@ -1,0 +1,89 @@
+COMANDI DI TEST - SDN SERVICE SLICING + DOS
+
+PULIZIA INIZIALE:
+sudo mn -c
+
+
+AVVIO AMBIENTE
+
+Terminale 1 - Controller Ryu:
+cd ~/sdn-service-slicing-dos
+pyenv shell 3.8.18
+source ~/ryu38-env/bin/activate
+ryu-manager controller.py --ofp-tcp-listen-port 6633
+
+Terminale 2 - Dashboard:
+cd ~/sdn-service-slicing-dos
+pyenv shell 3.8.18
+source ~/ryu38-env/bin/activate
+python3 dashboard.py
+
+Aprire nel browser:
+http://127.0.0.1:5050
+
+Terminale 3 - Mininet:
+cd ~/sdn-service-slicing-dos
+sudo python3 topology.py
+
+
+TEST 1 - Slice video:
+h1 ping -c 3 h4
+
+Risultato atteso:
+0% packet loss.
+
+
+TEST 2 - Isolamento web -> video:
+h2 ping -c 3 h4
+
+Risultato atteso:
+100% packet loss.
+
+
+TEST 3 - Slice web:
+h5 iperf -s -p 5001 &
+h2 iperf -c 10.0.0.5 -p 5001 -t 10
+
+Risultato atteso:
+Trasferimento riuscito, circa 2-3 Mbps.
+
+
+TEST 4 - Isolamento video -> web:
+h1 ping -c 3 h5
+
+Risultato atteso:
+100% packet loss.
+
+
+TEST 5 - Traffico video legittimo:
+h4 iperf -s -u -p 9999 &
+h1 iperf -c 10.0.0.4 -u -p 9999 -b 5M -t 10
+
+Risultato atteso:
+Traffico instradato correttamente, sotto soglia.
+
+
+TEST 6 - Rilevamento DoS da h3:
+h3 iperf -c 10.0.0.4 -u -p 9999 -b 20M -t 20
+
+Risultato atteso:
+Rilevato attacco e host h3 bloccato per 30 secondi.
+
+
+TEST 7 - Rilevamento DoS da h1:
+Attendere almeno 30 secondi se h1 o h3 risultano ancora bloccati, poi eseguire:
+
+h1 iperf -c 10.0.0.4 -u -p 9999 -b 20M -t 20
+
+Risultato atteso:
+Rilevato e bloccato attacco con la stessa logica di h3.
+
+
+TEST 8 - Dashboard:
+python3 dashboard.py
+
+URL:
+http://127.0.0.1:5050
+
+Risultato atteso:
+Stato della rete e blocchi mostrati in tempo reale.

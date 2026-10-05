@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDN Network Slicing & DoS Monitor (Light Tech)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --border-card: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --color-video: #4f46e5;
+            --color-web: #059669;
+            --color-attacker: #d97706;
+            --color-dos: #e11d48;
+            --color-success: #0d9488;
+            --font-sans: 'Plus Jakarta Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* NAVBAR HEADER */
+        .navbar {
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo .tag {
+            background: #e0e7ff;
+            color: #4338ca;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        .brand-logo h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .chip {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .dot-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #cbd5e1;
+        }
+
+        .dot-indicator.online { background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+        .dot-indicator.offline { background: var(--color-dos); box-shadow: 0 0 8px var(--color-dos); }
+
+        /* GRID CONTENT */
+        .container {
+            max-width: 1500px;
+            margin: 28px auto 0;
+            padding: 0 32px;
+            display: grid;
+            grid-template-columns: 2.2fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .container { grid-template-columns: 1fr; padding: 16px; }
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            margin-bottom: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #475569;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* KPI TILES */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .kpi-tile {
+            background: #fafafa;
+            border: 1px solid #f1f5f9;
+            border-top: 4px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .kpi-video { border-top-color: var(--color-video); }
+        .kpi-web { border-top-color: var(--color-web); }
+        .kpi-attacker { border-top-color: var(--color-attacker); }
+        .kpi-dos { border-top-color: var(--color-dos); }
+
+        .kpi-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .kpi-value {
+            font-family: var(--font-mono);
+            font-size: 24px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+
+        .kpi-unit { font-size: 12px; color: var(--text-muted); margin-left: 2px; }
+
+        canvas#chart {
+            width: 100%;
+            height: 290px;
+            display: block;
+        }
+
+        /* RIGHT COLUMN COMPONENTS */
+        .blocked-box {
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .blocked-badge-style {
+            display: inline-block;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 16px;
+            border-radius: 20px;
+            background: #ffe4e6;
+            color: #be123c;
+            border: 1px solid #fda4af;
+        }
+
+        .blocked-badge-style.ok {
+            background: #ecfdf5;
+            color: #047857;
+            border-color: #a7f3d0;
+        }
+
+        .blocked-info {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #475569;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table tr { border-bottom: 1px solid #f1f5f9; }
+        .data-table td { padding: 10px 0; }
+        .data-table td:last-child {
+            text-align: right;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--color-video);
+        }
+
+        .logs-wrapper {
+            max-height: 220px;
+            overflow-y: auto;
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+        }
+
+        .log-entry {
+            background: #fef2f2;
+            border-left: 3px solid var(--color-dos);
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 0 6px 6px 0;
+            color: #1e293b;
+        }
+
+        .log-entry .time { color: #94a3b8; font-size: 10.5px; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div class="brand-logo">
+            <span class="tag">RYU SDN 1.3</span>
+            <h1>Service Slicing &amp; DoS Monitor</h1>
+        </div>
+        <div class="status-bar">
+            <div class="chip">
+                <span>Switch Connessi:</span>
+                <strong id="metric-switches" style="color: var(--color-video);">0</strong>
+            </div>
+            <div class="chip">
+                <span class="dot-indicator" id="conn-dot"></span>
+                <span id="conn-text">In attesa del controller…</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- LEFT COLUMN -->
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📈 Analytics Throughput per Slice (Mbps)</div>
+                    <span style="font-size: 12px; color: var(--text-muted);">Frequenza Polling: 2s</span>
+                </div>
+
+                <div class="kpi-grid">
+                    <div class="kpi-tile kpi-video">
+                        <div class="kpi-label">Video (H1 → H4)</div>
+                        <div class="kpi-value"><span id="metric-video">0.00</span><span class="kpi-unit">Mbps</span></div>
+                    </div>
+                    <div class="kpi-tile kpi-web">
+                        <div class="kpi-label">Web (H2 → H5)</div>
+                        <div class="kpi-value"><span id="metric-web">0.00</span><span class="kpi-unit">Mbps</span></div>
+                    </div>
+                    <div class="kpi-tile kpi-attacker">
+                        <div class="kpi-label">Attacker (H3 → H4)</div>
+                        <div class="kpi-value"><span id="metric-attacker">0.00</span><span class="kpi-unit">Mbps</span></div>
+                    </div>
+                    <div class="kpi-tile kpi-dos">
+                        <div class="kpi-label">Soglia DoS</div>
+                        <div class="kpi-value"><span id="metric-threshold" style="color: var(--color-dos);">—</span><span class="kpi-unit">Mbps</span></div>
+                    </div>
+                </div>
+
+                <canvas id="chart"></canvas>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🛡️ Host Bloccati</div>
+                </div>
+                <div class="blocked-box">
+                    <div id="attacker-badge" class="blocked-badge-style ok">NESSUN BLOCCO ATTIVO</div>
+                    <div id="attacker-detail" class="blocked-info">Tutti gli host rientrano nella soglia di banda.</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">⚙️ Parametri Controller</div>
+                </div>
+                <table class="data-table">
+                    <tr><td style="color: var(--text-muted);">Porta Video (UDP)</td><td id="cfg-video-port">—</td></tr>
+                    <tr><td style="color: var(--text-muted);">Porta Web (TCP)</td><td id="cfg-web-port">—</td></tr>
+                    <tr><td style="color: var(--text-muted);">Soglia DoS</td><td id="cfg-threshold">—</td></tr>
+                    <tr><td style="color: var(--text-muted);">Timeout Blocco</td><td id="cfg-timeout">—</td></tr>
+                </table>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🚨 Storico Attacchi DoS</div>
+                </div>
+                <div id="events-list" class="logs-wrapper">
+                    <div style="color: var(--text-muted); text-align: center; padding: 12px;">Nessun evento registrato.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const POLL_INTERVAL_MS = 2000;
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * devicePixelRatio;
+            canvas.height = rect.height * devicePixelRatio;
+            ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        function drawChart(slices, threshold) {
+            resizeCanvas();
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            ctx.clearRect(0, 0, w, h);
+            const padding = 24;
+
+            const seriesDefs = [
+                { key: 'video_legit', color: '#4f46e5' },
+                { key: 'web',         color: '#059669' },
+                { key: 'attacker',    color: '#d97706' },
+            ];
+
+            const allPoints = seriesDefs.flatMap(s => (slices[s.key]?.history || []).slice(-60));
+            const maxVal = Math.max(threshold * 1.4, ...allPoints.map(p => p.mbps), 1);
+
+            ctx.strokeStyle = '#f1f5f9';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = padding + (h - padding * 2) * (i / 4);
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(w - padding, y);
+                ctx.stroke();
+            }
+
+            if (threshold > 0) {
+                const yThresh = padding + (h - padding * 2) * (1 - threshold / maxVal);
+                ctx.strokeStyle = '#e11d48';
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(padding, yThresh);
+                ctx.lineTo(w - padding, yThresh);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            let anySeriesDrawn = false;
+            seriesDefs.forEach(({ key, color }) => {
+                const points = (slices[key]?.history || []).slice(-60);
+                if (points.length < 2) return;
+                anySeriesDrawn = true;
+
+                const stepX = (w - padding * 2) / (points.length - 1);
+                ctx.beginPath();
+                points.forEach((p, i) => {
+                    const x = padding + i * stepX;
+                    const y = padding + (h - padding * 2) * (1 - p.mbps / maxVal);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                if (key === 'attacker' && threshold > 0) {
+                    points.forEach((p, i) => {
+                        if (p.mbps > threshold) {
+                            const x = padding + i * stepX;
+                            const y = padding + (h - padding * 2) * (1 - p.mbps / maxVal);
+                            ctx.beginPath();
+                            ctx.arc(x, y, 4, 0, Math.PI * 2);
+                            ctx.fillStyle = '#e11d48';
+                            ctx.fill();
+                        }
+                    });
+                }
+            });
+
+            if (!anySeriesDrawn) {
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '12px "JetBrains Mono", monospace';
+                ctx.fillText('In attesa di traffico sulle slice…', padding, h / 2);
+            }
+        }
+
+        function renderEvents(events) {
+            const list = document.getElementById('events-list');
+            if (!events || events.length === 0) {
+                list.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 12px;">Nessun evento registrato.</div>';
+                return;
+            }
+
+            list.innerHTML = events.slice().reverse().map(ev => {
+                const time = new Date(ev.t * 1000).toLocaleTimeString('it-IT');
+                return `<div class="log-entry">
+                    <span class="time">[${time}]</span><br>
+                    Attacco da <b>${ev.attacker}</b> (${ev.mbps} Mbps) → bloccato ${ev.block_timeout}s
+                </div>`;
+            }).join('');
+        }
+
+        async function poll() {
+            let data;
+            try {
+                const res = await fetch('/api/stats');
+                data = await res.json();
+            } catch (e) {
+                setOffline();
+                return;
+            }
+
+            const dot = document.getElementById('conn-dot');
+            const connText = document.getElementById('conn-text');
+            if (data.controller_online) {
+                dot.className = 'dot-indicator online';
+                connText.textContent = 'Controller Online';
+            } else {
+                dot.className = 'dot-indicator offline';
+                connText.textContent = 'Controller Offline';
+            }
+
+            const slices = data.slices || {};
+            const cfg = data.config || {};
+            const blockedHosts = data.blocked_hosts || [];
+
+            document.getElementById('metric-video').textContent = (slices.video_legit?.current_mbps ?? 0).toFixed(2);
+            document.getElementById('metric-web').textContent = (slices.web?.current_mbps ?? 0).toFixed(2);
+            document.getElementById('metric-attacker').textContent = (slices.attacker?.current_mbps ?? 0).toFixed(2);
+            document.getElementById('metric-threshold').textContent = cfg.dos_threshold_mbps ?? '—';
+            document.getElementById('metric-switches').textContent = (data.switches_connected || []).length;
+
+            document.getElementById('cfg-video-port').textContent = cfg.video_port ?? '—';
+            document.getElementById('cfg-web-port').textContent = cfg.web_port ?? '—';
+            document.getElementById('cfg-threshold').textContent = cfg.dos_threshold_mbps ? cfg.dos_threshold_mbps + ' Mbps' : '—';
+            document.getElementById('cfg-timeout').textContent = cfg.block_timeout ? cfg.block_timeout + ' s' : '—';
+
+            const badge = document.getElementById('attacker-badge');
+            const detail = document.getElementById('attacker-detail');
+
+            if (blockedHosts.length > 0) {
+                badge.className = 'blocked-badge-style';
+                badge.textContent = `${blockedHosts.length} HOST BLOCCATI`;
+                detail.innerHTML = blockedHosts
+                    .map(h => `<strong>${h.ip}</strong> — sblocco tra <strong>${h.remaining_seconds}s</strong>`)
+                    .join('<br>');
+            } else {
+                badge.className = 'blocked-badge-style ok';
+                badge.textContent = 'NESSUN BLOCCO ATTIVO';
+                detail.textContent = 'Tutti gli host rientrano nella soglia di banda.';
+            }
+
+            renderEvents(data.dos_events);
+            drawChart(slices, cfg.dos_threshold_mbps || 0);
+        }
+
+        function setOffline() {
+            document.getElementById('conn-dot').className = 'dot-indicator offline';
+            document.getElementById('conn-text').textContent = 'Dashboard Disconnessa';
+        }
+
+        resizeCanvas();
+        poll();
+        setInterval(poll, POLL_INTERVAL_MS);
+    </script>
+</body>
+</html>

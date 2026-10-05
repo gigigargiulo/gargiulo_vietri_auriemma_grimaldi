@@ -1,0 +1,116 @@
+RISULTATI DEI TEST - SDN SERVICE SLICING + DOS MONITOR
+
+TEST 1 - Slice video
+Comando:
+h1 ping -c 3 h4
+
+Risultato osservato:
+3 packets transmitted, 3 received, 0% packet loss.
+
+Interpretazione:
+Il client video h1 comunica correttamente con il video server h4.
+La comunicazione appartiene alla slice video e viene instradata sul percorso dedicato.
+
+
+TEST 2 - Isolamento web -> video
+Comando:
+h2 ping -c 3 h4
+
+Risultato osservato:
+3 packets transmitted, 0 received, 100% packet loss.
+Destination Host Unreachable.
+
+Interpretazione:
+Il client web h2 non può comunicare con il video server h4.
+Il traffico non appartenente alla slice autorizzata viene bloccato dal controller.
+
+
+TEST 3 - Slice web
+Comandi:
+h5 iperf -s -p 5001 &
+h2 iperf -c 10.0.0.5 -p 5001 -t 10
+
+Risultato osservato:
+3.88 MBytes trasferiti.
+2.48 Mbits/sec.
+
+Interpretazione:
+Il client web h2 comunica correttamente con il web server h5 sulla porta TCP 5001.
+La comunicazione appartiene alla slice web e viene instradata sul percorso dedicato.
+
+
+TEST 4 - Isolamento video -> web
+Comando:
+h1 ping -c 3 h5
+
+Risultato osservato:
+3 packets transmitted, 0 received, 100% packet loss.
+Destination Host Unreachable.
+
+Interpretazione:
+Il client video h1 non può comunicare con il web server h5.
+Il traffico tra host appartenenti a slice diverse viene bloccato.
+
+
+TEST 5 - Traffico video legittimo
+Comandi:
+h4 iperf -s -u -p 9999 &
+h1 iperf -c 10.0.0.4 -u -p 9999 -b 5M -t 10
+
+Risultato osservato:
+Traffico UDP generato correttamente da h1 verso h4 sulla porta 9999.
+La dashboard mostra il traffico della slice video legittima.
+
+Interpretazione:
+Il traffico video autorizzato viene instradato correttamente e resta sotto la soglia DoS.
+
+
+TEST 6 - Rilevamento DoS da h3
+Comando:
+h3 iperf -c 10.0.0.4 -u -p 9999 -b 20M -t 20
+
+Risultato osservato nel controller:
+Monitor slice 'attacker': 10.0.0.3 -> 10.0.0.4 sopra soglia.
+Possibile DoS rilevato.
+Host 10.0.0.3 bloccato per 30 secondi.
+
+Risultato osservato nella dashboard:
+Il grafico mostra il traffico del flusso h3 -> h4 sopra la soglia DoS.
+La dashboard segnala un host bloccato e mostra il tempo residuo di blocco.
+
+Interpretazione:
+Il controller rileva il traffico anomalo generato da h3 e installa una regola di drop temporanea.
+
+
+TEST 7 - Rilevamento DoS da h1
+Comando:
+h1 iperf -c 10.0.0.4 -u -p 9999 -b 20M -t 20
+
+Risultato osservato:
+Il controller rileva traffico sopra soglia anche da h1 e blocca temporaneamente l'host.
+
+Interpretazione:
+Il rilevamento DoS è comportamentale.
+Il sistema non blocca un host perché è identificato come attacker, ma perché supera la soglia di traffico sulla slice monitorata.
+
+
+TEST 8 - Dashboard
+Comando:
+python3 dashboard.py
+
+URL:
+http://127.0.0.1:5050
+
+Risultato osservato:
+La dashboard mostra:
+- controller online;
+- numero di switch connessi;
+- traffico video h1 -> h4;
+- traffico web h2 -> h5;
+- traffico sorvegliato h3 -> h4;
+- soglia DoS;
+- eventi DoS rilevati;
+- host bloccati temporaneamente.
+
+Interpretazione:
+La dashboard permette di osservare in tempo reale lo stato della rete, il funzionamento dello slicing e la mitigazione del traffico anomalo.
