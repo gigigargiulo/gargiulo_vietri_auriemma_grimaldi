@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Slicing — monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#F5F7FA; --panel:#FFFFFF; --ink:#1C2A38; --muted:#5E6E7E; --line:#D5DCE3;
+          --upper:#D99A1E; --lower:#4F79B5; --video:#2E8B57; --switch:#1F5C7A; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.5 "IBM Plex Sans", system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px; }
+  header { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; }
+  h1 { font-size:1.4rem; margin:0; }
+  h2 { font-size:1rem; margin:0 0 8px; }
+  #mode { font-weight:600; color:var(--switch); }
+  #status { color:var(--muted); font-size:.9rem; margin:4px 0 0; }
+  #prestito { display:none; margin-top:12px; padding:10px 14px; border-radius:6px;
+              background:#FBF1DC; border:1px solid var(--upper); color:#7A5405; }
+  #prestito.on { display:block; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:16px; margin-top:16px; }
+  svg { width:100%; height:auto; display:block; }
+  .track { fill:none; stroke:var(--line); stroke-linecap:round; stroke-linejoin:round; }
+  .fill  { fill:none; stroke-linecap:round; stroke-linejoin:round; transition:stroke-dasharray .6s; }
+  .sw rect { fill:var(--switch); }
+  .sw text { fill:#fff; font-size:13px; font-weight:600; text-anchor:middle; }
+  .val { font-size:15px; font-weight:600; text-anchor:middle; }
+  .sub { font-size:12px; fill:var(--muted); text-anchor:middle; }
+  .chart-box { position:relative; height:320px; }
+  @media (prefers-reduced-motion:reduce) { .fill { transition:none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Network Slicing</h1>
+    <div>Modalità <span id="mode">–</span></div>
+  </header>
+  <p id="status">In attesa dei dati…</p>
+  <p id="prestito">Slice upper prestato: il traffico h2 ↔ h4 sta viaggiando sul percorso da 10 Mbps.</p>
+
+  <section class="panel">
+    <h2>Carico dei link core</h2>
+    <!-- spessore del tracciato proporzionale alla capacità, riempimento = utilizzo -->
+    <svg viewBox="0 0 600 220" role="img" aria-label="Utilizzo dei due percorsi fra s1 e s4">
+      <path class="track" d="M60 110 L300 40 L540 110" stroke-width="14"/>
+      <path class="track" d="M60 110 L300 180 L540 110" stroke-width="6"/>
+      <path id="fill-UPPER" class="fill" d="M60 110 L300 40 L540 110" stroke="var(--upper)"
+            stroke-width="14" pathLength="100" stroke-dasharray="0 100"/>
+      <path id="fill-LOWER" class="fill" d="M60 110 L300 180 L540 110" stroke="var(--lower)"
+            stroke-width="6" pathLength="100" stroke-dasharray="0 100"/>
+      <g class="sw"><rect x="38" y="96" width="44" height="28" rx="4"/><text x="60" y="115">s1</text></g>
+      <g class="sw"><rect x="278" y="26" width="44" height="28" rx="4"/><text x="300" y="45">s2</text></g>
+      <g class="sw"><rect x="278" y="166" width="44" height="28" rx="4"/><text x="300" y="185">s3</text></g>
+      <g class="sw"><rect x="518" y="96" width="44" height="28" rx="4"/><text x="540" y="115">s4</text></g>
+      <text id="val-UPPER" class="val" x="300" y="82" fill="var(--upper)">–</text>
+      <text id="sub-UPPER" class="sub" x="300" y="98">slice upper, 10 Mbps</text>
+      <text id="val-LOWER" class="val" x="300" y="136" fill="var(--lower)">–</text>
+      <text id="sub-LOWER" class="sub" x="300" y="152">slice lower, 1 Mbps</text>
+    </svg>
+  </section>
+
+  <section class="panel">
+    <h2>Throughput nel tempo</h2>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+  </section>
+</main>
+
+<script>
+const CAP = { UPPER: 10, LOWER: 1 };          // Mbps nominali, come in topology.py
+const POLL_MS = 1000;
+const SERIES = [                              // [chiave nel JSON, campo, etichetta, colore, tratteggio]
+  ['UPPER', 'tx',   'Upper, andata s1→s2',  '#D99A1E', false],
+  ['UPPER', 'rx',   'Upper, ritorno s2→s1', '#D99A1E', true ],
+  ['LOWER', 'tx',   'Lower, andata s1→s3',  '#4F79B5', false],
+  ['LOWER', 'rx',   'Lower, ritorno s3→s1', '#4F79B5', true ],
+  ['video', null,   'Video offerto (ingresso s1)', '#2E8B57', false],
+];
+const $ = id => document.getElementById(id);
+
+let chart = null;
+if (typeof Chart !== 'undefined') {
+  chart = new Chart($('chart'), {
+    type: 'line',
+    data: { labels: [], datasets: SERIES.map(([k, f, label, color, dash]) => ({
+      label, data: [], borderColor: color, backgroundColor: color,
+      borderDash: dash ? [6, 4] : [], borderWidth: 2, pointRadius: 0, tension: 0.2 })) },
+    options: {
+      animation: false, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Mbps' } },
+                x: { ticks: { maxTicksLimit: 8 } } }
+    }
+  });
+} else {
+  $('chart').replaceWith('Chart.js non caricato: la VM ha accesso a internet?');
+}
+
+function fmt(v) {
+  return v >= 1 ? v.toFixed(2) + ' Mbps' : (v * 1000).toFixed(0) + ' kbps';
+}
+
+function valore(sample, chiave, campo) {        // il video è un numero, gli slice un oggetto {tx, rx}
+  return campo === null ? sample[chiave] : sample[chiave][campo];
+}
+
+function drawLink(name, sample) {
+  const { tx, rx } = sample[name];
+  const u = Math.min(100, Math.max(tx, rx) / CAP[name] * 100);   // riempio in base al verso più carico
+  $('fill-' + name).setAttribute('stroke-dasharray', u.toFixed(1) + ' 100');
+  $('val-' + name).textContent = fmt(tx) + ' / ' + fmt(rx);
+  $('sub-' + name).textContent = 'andata / ritorno, ' + u.toFixed(0) + '% di ' + CAP[name] + ' Mbps';
+}
+
+async function update() {
+  try {
+    const res = await fetch('stats.json?' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    const hist = await res.json();
+    if (!hist.length) return;
+    const last = hist[hist.length - 1];
+    const age = Date.now() / 1000 - last.t;
+    $('mode').textContent = last.mode + (last.dynamic ? ' + dynamic' : '');
+    $('status').textContent = age > 5
+      ? 'Nessun aggiornamento da ' + age.toFixed(0) + ' s: controlla che ryu-manager sia attivo.'
+      : 'Aggiornato alle ' + new Date(last.t * 1000).toLocaleTimeString('it-IT')
+        + ' · video offerto ' + fmt(last.video);
+    $('prestito').classList.toggle('on', !!last.prestito);
+    drawLink('UPPER', last);
+    drawLink('LOWER', last);
+    if (chart) {
+      chart.data.labels = hist.map(h => new Date(h.t * 1000).toLocaleTimeString('it-IT'));
+      SERIES.forEach(([k, f], i) => { chart.data.datasets[i].data = hist.map(h => valore(h, k, f)); });
+      chart.update();
+    }
+  } catch (e) {
+    $('status').textContent = 'stats.json non trovato: avvia ryu-manager e http.server dalla cartella del repository.';
+  }
+}
+
+update();
+setInterval(update, POLL_MS);
+</script>
+</body>
+</html>
