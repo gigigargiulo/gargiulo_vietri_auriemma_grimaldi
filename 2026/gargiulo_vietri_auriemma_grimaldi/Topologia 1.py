@@ -1,6 +1,5 @@
 from mininet.topo import Topo
 from mininet.link import TCLink
-import json
 
 class MyTopo(Topo):
     def build(self):
@@ -28,24 +27,6 @@ class MyTopo(Topo):
         self.addLink(h7, s3, cls=TCLink, bw=70)  # s3-eth4
         self.addLink(h8, s3, cls=TCLink, bw=70)  # s3-eth5
         self.addLink(s3, h5, cls=TCLink, bw=100) # s3-eth6
-
-        # Mappa corretta basata sulla topologia effettiva (switch, porta) -> bw
-        port_bw = {
-            "1,1": 5,    # s1 -> h1
-            "1,2": 5,    # s1 -> h2
-            "1,3": 20,   # s1 -> s3
-            
-            "2,1": 5,    # s2 -> h3
-            "2,2": 5,    # s2 -> h4
-            "2,3": 20,   # s2 -> s3
-            
-            "3,1": 20,   # s3 -> s1
-            "3,2": 20,   # s3 -> s2
-            "3,3": 70,   # s3 -> h6
-            "3,4": 70,   # s3 -> h7
-            "3,5": 70,   # s3 -> h8
-            "3,6": 100   # s3 -> h5
-        }
 
 
 topos = { 'mytopo': ( lambda: MyTopo() ) }
